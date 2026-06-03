@@ -1,0 +1,14 @@
+# Core Libraries
+numpy>=1.24.0
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
+
+# YOLOv8
+ultralytics>=8.0.0
+
+# MediaPipe for Pose Estimation
+mediapipe>=0.10.0
+
+# Additional utilities
+Pillow>=10.0.0
+scipy>=1.11.0
