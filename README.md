@@ -278,8 +278,4 @@ Tự động reset khi người đứng dậy (30 frames liên tiếp):
 
 **Đồ án tốt nghiệp ngành Công nghệ Thông tin**  
 **Đề tài**: AI-Based Human Fall Detection System Using Computer Vision  
-**Ngày hoàn thành**: 2026-01-09
 
-## License
-
-MIT License
