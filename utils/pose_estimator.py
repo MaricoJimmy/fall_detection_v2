@@ -12,12 +12,8 @@ class PoseEstimator:
     """
 
     def __init__(self):
-        self.mp_pose = mp.solutions.pose
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
-
         # Khởi tạo MediaPipe Pose
-        self.pose = self.mp_pose.Pose(
+        self.pose = mp.solutions.pose.Pose(
             static_image_mode=MEDIAPIPE_CONFIG['static_image_mode'],
             model_complexity=MEDIAPIPE_CONFIG['model_complexity'],
             smooth_landmarks=MEDIAPIPE_CONFIG['smooth_landmarks'],
@@ -25,6 +21,9 @@ class PoseEstimator:
             min_detection_confidence=MEDIAPIPE_CONFIG['min_detection_confidence'],
             min_tracking_confidence=MEDIAPIPE_CONFIG['min_tracking_confidence']
         )
+        
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
 
     def process_frame(self, frame):
         """

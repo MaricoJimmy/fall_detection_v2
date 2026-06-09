@@ -1,4 +1,5 @@
 ﻿venv/
+venv_311/
 __pycache__/
 *.pyc
 .DS_Store
@@ -7,3 +8,27 @@ __pycache__/
 dist/
 build/
 .env
+
+# Ignore heavy dataset and model files
+datasets/**/*.npy
+datasets/**/*.pkl
+datasets/**/*.pickle
+models/**/*.pth
+models/**/*.pt
+models/**/*.onnx
+models/**/*.h5
+models/**/*.keras
+models/**/*.joblib
+
+# Ignore logs and outputs
+logs/**/*.log
+test_outputs/
+*.log
+
+# Keep the .gitkeep files
+!.gitkeep
+!datasets/.gitkeep
+!datasets/skeleton_windows/.gitkeep
+!models/.gitkeep
+!models/skeleton/.gitkeep
+!logs/.gitkeep

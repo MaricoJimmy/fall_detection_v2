@@ -171,9 +171,9 @@ class AlertSystem:
         """
         h, w = frame.shape[:2]
 
-        # Background panel
+        # Background panel (tăng chiều cao để chứa thêm thông tin cải tiến)
         panel_width = 280
-        panel_height = 200
+        panel_height = 260  # Tăng từ 200 lên 260 để chứa thêm 2 dòng
         cv2.rectangle(frame, (w - panel_width - 10, 10),
                      (w - 10, panel_height), (0, 0, 0), -1)
         cv2.rectangle(frame, (w - panel_width - 10, 10),
@@ -186,6 +186,12 @@ class AlertSystem:
         font_scale = 0.5
         color = (255, 255, 255)
 
+        # === CẬP NHẬT: Thêm thông tin cải tiến vào info panel ===
+        # Lấy thông tin temporal voting và normalized velocity
+        vote_count = fall_info.get('vote_count', 0)
+        temporal_window = fall_info.get('temporal_window', 15)
+        velocity_norm = fall_info.get('velocity_norm', (0, 0))
+
         info_lines = [
             f"FPS: {fps:.1f}",
             f"Trang thai: {fall_info['status']}",
@@ -193,6 +199,9 @@ class AlertSystem:
             f"Ty le W/H: {fall_info['aspect_ratio']:.2f}",
             f"Van toc X: {fall_info['velocity'][0]:.1f} px/s",
             f"Van toc Y: {fall_info['velocity'][1]:.1f} px/s",
+            # === Thông tin cải tiến ===
+            f"VT chuan Y: {velocity_norm[1]:.2f}",  # Normalized velocity Y
+            f"Vote: {vote_count}/{temporal_window}",  # Temporal voting
             f"Diem chi so: {fall_info['fall_score']}/4"
         ]
 

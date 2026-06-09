@@ -60,19 +60,32 @@ class FallDetectionSystem:
 
     def init_camera(self):
         """Khởi tạo camera"""
-        self.cap = cv2.VideoCapture(CAMERA_CONFIG['source'])
+        source = CAMERA_CONFIG['source']
+        
+        # Thử ép kiểu sang int nếu là camera index dạng chuỗi (ví dụ "0")
+        try:
+            source = int(source)
+            CAMERA_CONFIG['source'] = source
+        except ValueError:
+            pass
+            
+        self.cap = cv2.VideoCapture(source)
 
         if not self.cap.isOpened():
             raise RuntimeError(
-                f"Khong the mo camera/video: {CAMERA_CONFIG['source']}"
+                f"Khong the mo camera/video: {source}"
             )
 
-        # Thiết lập độ phân giải
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CONFIG['width'])
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CONFIG['height'])
-        self.cap.set(cv2.CAP_PROP_FPS, CAMERA_CONFIG['fps'])
-
-        print(f"Camera khoi tao: {CAMERA_CONFIG['width']}x{CAMERA_CONFIG['height']}")
+        # Chỉ thiết lập độ phân giải nếu là webcam (số nguyên)
+        if isinstance(source, int):
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CONFIG['width'])
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CONFIG['height'])
+            self.cap.set(cv2.CAP_PROP_FPS, CAMERA_CONFIG['fps'])
+            print(f"Camera khoi tao: {CAMERA_CONFIG['width']}x{CAMERA_CONFIG['height']}")
+        else:
+            w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            print(f"Video file khoi tao: {w}x{h}")
 
     def detect_person_yolo(self, frame):
         """
@@ -138,7 +151,7 @@ class FallDetectionSystem:
 
         return frame
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, timestamp=None):
         """
         Xử lý một frame
 
@@ -202,14 +215,15 @@ class FallDetectionSystem:
                     # Phát hiện ngã
                     fall_info = self.fall_detector.detect(
                         landmarks, bbox_norm,
-                        x2_crop - x1_crop, y2_crop - y1_crop
+                        x2_crop - x1_crop, y2_crop - y1_crop,
+                        timestamp=timestamp
                     )
 
                     # Vẽ cảnh báo
                     frame = self.alert_system.draw_alert(frame, fall_info)
 
                     # Kích hoạt cảnh báo nếu ngã
-                    if fall_info['status'] == 'FALL' and self.fall_detector.can_alert():
+                    if fall_info['status'] == 'FALL' and self.fall_detector.can_alert(timestamp=timestamp):
                         self.alert_system.trigger_alert(frame.copy(), fall_info)
 
         return frame, fall_info
@@ -305,7 +319,9 @@ class FallDetectionSystem:
                         self.fps_history.pop(0)
 
                     # Xử lý frame
-                    processed_frame, fall_info = self.process_frame(frame)
+                    is_video_file = isinstance(CAMERA_CONFIG['source'], str)
+                    timestamp = self.cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0 if is_video_file else time.time()
+                    processed_frame, fall_info = self.process_frame(frame, timestamp=timestamp)
 
                     # Tính FPS
                     fps = self.calculate_fps()
