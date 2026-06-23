@@ -8,10 +8,8 @@ import cv2
 import numpy as np
 import time
 from datetime import datetime
-from ultralytics import YOLO
-
 from config import (
-    CAMERA_CONFIG, YOLO_CONFIG, COLORS,
+    CAMERA_CONFIG, COLORS,
     LOGS_DIR
 )
 from utils import FallDetector, PoseEstimator, AlertSystem
@@ -26,22 +24,17 @@ class FallDetectionSystem:
         """Khởi tạo hệ thống"""
         print("=" * 60)
         print("  AI-BASED HUMAN FALL DETECTION SYSTEM")
-        print("  Su dung: YOLOv8 + MediaPipe + Pose Estimation")
+        print("  Su dung: YOLOv8-pose + Pose Estimation (rule-based)")
         print("=" * 60)
         print()
 
-        # Khởi tạo YOLOv8
-        print("[1/3] Dang tai YOLOv8 model...")
-        self.yolo_model = YOLO(YOLO_CONFIG['model'])
-        print(f"      -> Da tai {YOLO_CONFIG['model']} thanh cong!")
-
-        # Khởi tạo Pose Estimator
-        print("[2/3] Dang khoi tao MediaPipe Pose...")
+        # Khởi tạo Pose Estimator (YOLOv8-pose)
+        print("[1/2] Dang tai YOLOv8-pose model...")
         self.pose_estimator = PoseEstimator()
-        print("      -> MediaPipe Pose san sang!")
+        print("      -> YOLOv8-pose san sang!")
 
         # Khởi tạo Fall Detector
-        print("[3/3] Dang khoi tao Fall Detector...")
+        print("[2/2] Dang khoi tao Fall Detector...")
         self.fall_detector = FallDetector()
         print("      -> Fall Detector san sang!")
 
@@ -87,70 +80,6 @@ class FallDetectionSystem:
             h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             print(f"Video file khoi tao: {w}x{h}")
 
-    def detect_person_yolo(self, frame):
-        """
-        Phát hiện người sử dụng YOLOv8
-
-        Args:
-            frame: Frame ảnh BGR
-
-        Returns:
-            list: Danh sách các bounding box [x1, y1, x2, y2, confidence]
-        """
-        results = self.yolo_model(
-            frame,
-            conf=YOLO_CONFIG['confidence'],
-            classes=YOLO_CONFIG['classes'],
-            verbose=False
-        )
-
-        detections = []
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                conf = box.conf[0].cpu().numpy()
-                detections.append([x1, y1, x2, y2, conf])
-
-        return detections
-
-    def draw_yolo_detection(self, frame, detections):
-        """
-        Vẽ bounding box YOLO lên frame
-
-        Args:
-            frame: Frame ảnh
-            detections: Danh sách các detection
-
-        Returns:
-            frame: Frame đã vẽ
-        """
-        for det in detections:
-            x1, y1, x2, y2, conf = det
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-
-            # Vẽ bounding box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            # Vẽ label
-            label = f"Person {conf:.2f}"
-            label_size, _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-            )
-            cv2.rectangle(
-                frame,
-                (x1, y1 - label_size[1] - 10),
-                (x1 + label_size[0], y1),
-                (0, 255, 0),
-                -1
-            )
-            cv2.putText(
-                frame, label, (x1, y1 - 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1
-            )
-
-        return frame
-
     def process_frame(self, frame, timestamp=None):
         """
         Xử lý một frame
@@ -162,9 +91,6 @@ class FallDetectionSystem:
             tuple: (processed_frame, fall_info)
         """
         h, w = frame.shape[:2]
-
-        # Bước 1: Phát hiện người bằng YOLO
-        detections = self.detect_person_yolo(frame)
 
         # Default fall_info
         fall_info = {
@@ -180,93 +106,34 @@ class FallDetectionSystem:
             'time_falling': 0
         }
 
-        # Vẽ YOLO detections
-        frame = self.draw_yolo_detection(frame, detections)
+        # Pose estimation + detection (YOLOv8-pose)
+        landmarks, bbox_norm, bbox_pixel = self.pose_estimator.process_frame(frame)
 
-        # Bước 2: Nếu có người, thực hiện pose estimation
-        if detections:
-            # Lấy detection đầu tiên (giả sử 1 người)
-            det = detections[0]
-            x1, y1, x2, y2 = det[:4]
+        if landmarks and bbox_norm:
+            # Vẽ landmarks
+            frame = self.pose_estimator.draw_landmarks(frame, landmarks)
 
-            # Crop region chứa người (mở rộng một chút)
-            padding = 20
-            x1_crop = max(0, int(x1) - padding)
-            y1_crop = max(0, int(y1) - padding)
-            x2_crop = min(w, int(x2) + padding)
-            y2_crop = min(h, int(y2) + padding)
+            # Vẽ bounding box
+            if bbox_pixel:
+                cv2.rectangle(frame, (bbox_pixel[0], bbox_pixel[1]),
+                             (bbox_pixel[2], bbox_pixel[3]), (0, 255, 0), 2)
 
-            person_region = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+            # Phát hiện ngã
+            fw = bbox_pixel[2] - bbox_pixel[0] if bbox_pixel else w
+            fh = bbox_pixel[3] - bbox_pixel[1] if bbox_pixel else h
+            fall_info = self.fall_detector.detect(
+                landmarks, bbox_norm, fw, fh,
+                timestamp=timestamp
+            )
 
-            if person_region.size > 0:
-                # Pose estimation
-                landmarks, bbox_norm, bbox_pixel = self.pose_estimator.process_frame(
-                    person_region
-                )
+            # Vẽ cảnh báo
+            frame = self.alert_system.draw_alert(frame, fall_info)
 
-                if landmarks:
-                    # Vẽ landmarks lên frame gốc
-                    # Cần điều chỉnh tọa độ
-                    self.draw_landmarks_on_frame(
-                        frame, landmarks, x1_crop, y1_crop,
-                        x2_crop - x1_crop, y2_crop - y1_crop
-                    )
-
-                    # Phát hiện ngã
-                    fall_info = self.fall_detector.detect(
-                        landmarks, bbox_norm,
-                        x2_crop - x1_crop, y2_crop - y1_crop,
-                        timestamp=timestamp
-                    )
-
-                    # Vẽ cảnh báo
-                    frame = self.alert_system.draw_alert(frame, fall_info)
-
-                    # Kích hoạt cảnh báo nếu ngã
-                    if fall_info['status'] == 'FALL' and self.fall_detector.can_alert(timestamp=timestamp):
-                        self.alert_system.trigger_alert(frame.copy(), fall_info)
+            # Kích hoạt cảnh báo nếu ngã
+            if fall_info['status'] == 'FALL' and self.fall_detector.can_alert(timestamp=timestamp):
+                self.alert_system.trigger_alert(frame.copy(), fall_info)
 
         return frame, fall_info
-
-    def draw_landmarks_on_frame(self, frame, landmarks, offset_x, offset_y,
-                                region_w, region_h):
-        """
-        Vẽ landmarks lên frame gốc (với offset)
-
-        Args:
-            frame: Frame gốc
-            landmarks: MediaPipe landmarks
-            offset_x, offset_y: Offset từ crop region
-            region_w, region_h: Kích thước crop region
-        """
-        for idx, landmark in enumerate(landmarks):
-            if landmark.visibility > 0.5:
-                x = int(landmark.x * region_w + offset_x)
-                y = int(landmark.y * region_h + offset_y)
-                cv2.circle(frame, (x, y), 3, COLORS['skeleton'], -1)
-
-        # Vẽ các đường nối chính
-        connections = [
-            (11, 12), (11, 23), (12, 24), (23, 24),
-            (23, 25), (24, 26), (25, 27), (26, 28),
-            (11, 13), (13, 15), (12, 14), (14, 16),
-            (0, 11), (0, 12)
-        ]
-
-        for start_idx, end_idx in connections:
-            start = landmarks[start_idx]
-            end = landmarks[end_idx]
-
-            if start.visibility > 0.5 and end.visibility > 0.5:
-                start_point = (
-                    int(start.x * region_w + offset_x),
-                    int(start.y * region_h + offset_y)
-                )
-                end_point = (
-                    int(end.x * region_w + offset_x),
-                    int(end.y * region_h + offset_y)
-                )
-                cv2.line(frame, start_point, end_point, COLORS['skeleton'], 2)
 
     def calculate_fps(self):
         """Tính FPS"""
@@ -391,20 +258,8 @@ def main():
         default=None,
         help='Nguon video (duong dan file hoac camera index). Mac dinh: webcam (0)'
     )
-    parser.add_argument(
-        '--model', '-m',
-        type=str,
-        default='yolov8n.pt',
-        help='YOLOv8 model (yolov8n.pt, yolov8s.pt, yolov8m.pt). Mac dinh: yolov8n.pt'
-    )
-
     args = parser.parse_args()
 
-    # Cập nhật config
-    if args.model:
-        YOLO_CONFIG['model'] = args.model
-
-    # Chạy hệ thống
     system = FallDetectionSystem()
     system.run(source=args.source)
 
