@@ -24,7 +24,7 @@ CAMERA_CONFIG = {
 
 # Cấu hình YOLOv8
 YOLO_CONFIG = {
-    'model': 'yolov8n.pt',  # yolov8n.pt (nano), yolov8s.pt (small), yolov8m.pt (medium)
+    'model': 'yolov8m.pt',  # yolov8n.pt (nano), yolov8s.pt (small), yolov8m.pt (medium)
     'confidence': 0.5,
     'classes': [0],  # Chỉ phát hiện người (class 0 trong COCO dataset)
     'device': 'cuda'  # 'cpu' hoặc 'cuda'

@@ -9,8 +9,6 @@ import torch
 import numpy as np
 from collections import deque
 from ultralytics import YOLO
-import mediapipe as mp
-import time
 import csv
 from datetime import datetime
 
@@ -19,7 +17,7 @@ from train_tcn_only import FallTCN
 
 CONFIG = {
     'model_path': 'models/skeleton/TCN_best.pth',
-    'yolo_model': 'yolov8n.pt',
+    'yolo_model': 'yolov8m-pose.pt',
     'window_size': 30,
     'num_features': 51,
     'threshold': 0.5,
@@ -52,14 +50,7 @@ class DetailedAnalyzer:
         self.model.to(CONFIG['device'])
         self.model.eval()
         
-        self.yolo = YOLO(CONFIG['yolo_model'])
-        self.mp_pose = mp.solutions.pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        self.yolo = YOLO('yolov8m-pose.pt')
         
         self.skeleton_buffer = deque(maxlen=CONFIG['window_size'])
         self.log_data = []
@@ -67,48 +58,27 @@ class DetailedAnalyzer:
         print("✓ Models loaded\n")
     
     def detect_person(self, frame):
-        results = self.yolo(frame, conf=0.5, classes=[0], verbose=False)
+        results = self.yolo(frame, conf=0.5, verbose=False)
         detections = []
+        keypoints_list = {}
         for result in results:
-            boxes = result.boxes
-            for box in boxes:
+            if result.boxes is None:
+                continue
+            kps_xy = result.keypoints.xy.cpu().numpy() if result.keypoints is not None else []
+            kps_conf = result.keypoints.conf.cpu().numpy() if result.keypoints is not None else []
+            for i, box in enumerate(result.boxes):
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 conf = box.conf[0].cpu().numpy()
                 detections.append([x1, y1, x2, y2, conf])
-        return detections
+                skeleton = np.zeros((17, 3), dtype=np.float32)
+                if i < len(kps_xy):
+                    skeleton[:, :2] = kps_xy[i]
+                    skeleton[:, 2] = kps_conf[i]
+                keypoints_list[len(detections) - 1] = skeleton
+        return detections, keypoints_list
     
     def extract_skeleton(self, frame, bbox):
-        x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
-        h, w = frame.shape[:2]
-        
-        padding = 20
-        x1_crop = max(0, x1 - padding)
-        y1_crop = max(0, y1 - padding)
-        x2_crop = min(w, x2 + padding)
-        y2_crop = min(h, y2 + padding)
-        
-        person_region = frame[y1_crop:y2_crop, x1_crop:x2_crop]
-        
-        if person_region.size == 0:
-            return None
-        
-        rgb = cv2.cvtColor(person_region, cv2.COLOR_BGR2RGB)
-        results = self.mp_pose.process(rgb)
-        
-        if not results.pose_landmarks:
-            return None
-        
-        skeleton = np.full((17, 3), np.nan)
-        
-        for idx, landmark in enumerate(results.pose_landmarks.landmark):
-            if idx < 17:
-                skeleton[idx] = [
-                    landmark.x * (x2_crop - x1_crop),
-                    landmark.y * (y2_crop - y1_crop),
-                    landmark.visibility
-                ]
-        
-        return skeleton
+        return None  # YOLOv8-pose provides keypoints in detect_person
     
     def normalize_skeleton(self, skeleton):
         if skeleton is None:
@@ -198,7 +168,7 @@ class DetailedAnalyzer:
             timestamp = frame_count / fps
             
             # Detect person
-            detections = self.detect_person(frame)
+            detections, keypoints_list = self.detect_person(frame)
             
             yolo_detected = len(detections) > 0
             skeleton_extracted = False
@@ -207,10 +177,9 @@ class DetailedAnalyzer:
             status = "NORMAL"
             
             if yolo_detected:
-                bbox = detections[0]
-                skeleton = self.extract_skeleton(frame, bbox)
+                skeleton = keypoints_list.get(0)
                 
-                if skeleton is not None:
+                if skeleton is not None and np.any(skeleton[:, 2] > 0):
                     skeleton_extracted = True
                     skeleton_norm = self.normalize_skeleton(skeleton)
                     

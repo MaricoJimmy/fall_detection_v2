@@ -11,9 +11,7 @@ import torch
 import numpy as np
 from collections import deque
 from ultralytics import YOLO
-import mediapipe as mp
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from train_tcn_only import FallTCN
@@ -41,63 +39,35 @@ class SkeletonAnalyzer:
         self.model = FallTCN(input_size=51, num_channels=[64, 128, 128], kernel_size=3, dropout=0.3)
         checkpoint = torch.load(model_path, map_location='cuda', weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model.to('cuda')
+        self.model.to(CONFIG['device'])
         self.model.eval()
         
-        self.yolo = YOLO('yolov8n.pt')
-        self.mp_pose = mp.solutions.pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        self.yolo = YOLO('yolov8m-pose.pt')
         
         print("✓ Models loaded\n")
     
     def detect_person(self, frame):
-        results = self.yolo(frame, conf=0.5, classes=[0], verbose=False)
+        results = self.yolo(frame, conf=0.5, verbose=False)
         detections = []
+        keypoints_list = {}
         for result in results:
-            boxes = result.boxes
-            for box in boxes:
+            if result.boxes is None:
+                continue
+            kps_xy = result.keypoints.xy.cpu().numpy() if result.keypoints is not None else []
+            kps_conf = result.keypoints.conf.cpu().numpy() if result.keypoints is not None else []
+            for i, box in enumerate(result.boxes):
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 conf = box.conf[0].cpu().numpy()
                 detections.append([x1, y1, x2, y2, conf])
-        return detections
+                skeleton = np.zeros((17, 3), dtype=np.float32)
+                if i < len(kps_xy):
+                    skeleton[:, :2] = kps_xy[i]
+                    skeleton[:, 2] = kps_conf[i]
+                keypoints_list[len(detections) - 1] = skeleton
+        return detections, keypoints_list
     
     def extract_skeleton(self, frame, bbox):
-        x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
-        h, w = frame.shape[:2]
-        
-        padding = 20
-        x1_crop = max(0, x1 - padding)
-        y1_crop = max(0, y1 - padding)
-        x2_crop = min(w, x2 + padding)
-        y2_crop = min(h, y2 + padding)
-        
-        person_region = frame[y1_crop:y2_crop, x1_crop:x2_crop]
-        
-        if person_region.size == 0:
-            return None
-        
-        rgb = cv2.cvtColor(person_region, cv2.COLOR_BGR2RGB)
-        results = self.mp_pose.process(rgb)
-        
-        if not results.pose_landmarks:
-            return None
-        
-        skeleton = np.full((17, 3), np.nan)
-        
-        for idx, landmark in enumerate(results.pose_landmarks.landmark):
-            if idx < 17:
-                skeleton[idx] = [
-                    landmark.x * (x2_crop - x1_crop),
-                    landmark.y * (y2_crop - y1_crop),
-                    landmark.visibility
-                ]
-        
-        return skeleton
+        return None  # YOLOv8-pose provides keypoints in detect_person
     
     def normalize_skeleton(self, skeleton):
         if skeleton is None:
@@ -155,7 +125,7 @@ class SkeletonAnalyzer:
         window_flat = window.reshape(window.shape[0], -1)
         
         input_tensor = torch.FloatTensor(window_flat).unsqueeze(0)
-        input_tensor = input_tensor.to('cuda')
+        input_tensor = input_tensor.to(CONFIG['device'])
         
         with torch.no_grad():
             prob = self.model(input_tensor).item()
@@ -194,15 +164,14 @@ class SkeletonAnalyzer:
             
             all_frames.append(frame)
             
-            detections = self.detect_person(frame)
+            detections, keypoints_list = self.detect_person(frame)
             
             skeleton_raw = None
             skeleton_norm = None
             
             if detections:
-                bbox = detections[0]
-                skeleton_raw = self.extract_skeleton(frame, bbox)
-                if skeleton_raw is not None:
+                skeleton_raw = keypoints_list.get(0)
+                if skeleton_raw is not None and np.any(skeleton_raw[:, 2] > 0):
                     skeleton_norm = self.normalize_skeleton(skeleton_raw)
             
             all_skeletons_raw.append(skeleton_raw)

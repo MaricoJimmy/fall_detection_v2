@@ -1,281 +1,127 @@
-# AI-Based Human Fall Detection System
+# Hệ Thống Phát Hiện Ngã (Fall Detection System)
 
-## Giới thiệu
+## Giới Thiệu
 
-Hệ thống phát hiện ngã sử dụng Computer Vision kết hợp Deep Learning, được phát triển qua 3 giai đoạn:
+Hệ thống phát hiện ngã sử dụng YOLOv8-pose để phát hiện người và trích xuất keypoints, kết hợp với mô hình TCN (Temporal Convolutional Network) để phân loại hành vi té ngã theo thời gian thực.
 
-1. **Rule-based (Baseline)**: Phát hiện ngã dựa trên luật thủ công
-2. **Skeleton Dataset**: Xây dựng dataset từ keypoints
-3. **Deep Learning (LSTM/TCN)**: Train mô hình học sâu trên dữ liệu skeleton
+### Kiến trúc
 
-### Công nghệ sử dụng
-- **YOLOv8**: Phát hiện người trong khung hình
-- **MediaPipe**: Pose estimation (17 keypoints COCO format)
-- **LSTM/TCN**: Mô hình deep learning cho chuỗi thời gian
-- **PyTorch**: Framework deep learning
+```
+Input Video → YOLOv8-pose (detection + pose) → Normalize skeleton → TCN Model → Fall/No Fall
+```
 
-## Kết quả đạt được
+## Cài Đặt
 
-### So sánh 3 phương pháp
+### Yêu cầu
+- Python 3.10+
+- PyTorch (có CUDA nếu dùng GPU)
+- Webcam hoặc file video
 
-| Model | Accuracy | Precision | Recall | F1 | Thời gian train |
-|-------|:--------:|:---------:|:------:|:--:|:---------------:|
-| **Rule-based** | 53.00% | 57.89% | 22.00% | 31.88% | - |
-| **LSTM** | 92.40% | 92.09% | 86.61% | 89.27% | 73s |
-| **TCN** | 93.09% | 90.72% | **90.29%** | **90.50%** | 153s |
-
-**Nhận xét:**
-- Deep learning vượt xa rule-based (+64-68% Recall)
-- **TCN** là mô hình tốt nhất với Recall 90.29% (bỏ sót chỉ 9.71%)
-- Model đã được train trên GPU RTX 4050 với CUDA 12.1
-
-### Dataset
-- **Tổng số video**: 6,988 videos (3,140 Fall + 3,848 No_Fall)
-- **Tổng số windows**: 42,727 sliding windows (30 frames mỗi window)
-- **Phân chia**: Train 70% / Validation 15% / Test 15%
-- **Chi tiết**: Xem [DATASET_BUILD_REPORT.md](DATASET_BUILD_REPORT.md)
-
-## Cài đặt
-
-### Yêu cầu hệ thống
-- Python 3.11+
-- CUDA 12.1 (để train trên GPU)
-- GPU NVIDIA (khuyến nghị RTX 4050 trở lên)
-- RAM 16GB+
-
-### Cài đặt thư viện
+### Cài dependencies
 
 ```bash
-# Tạo virtual environment
-python -m venv venv_311
-venv_311\Scripts\activate
-
-# Cài đặt dependencies
 pip install -r requirements.txt
-
-# Cài PyTorch với CUDA 12.1
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# Cài scikit-learn
-pip install scikit-learn
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118  # GPU
+# hoặc: pip install torch torchvision  # CPU
 ```
 
-## Sử dụng
-
-### 1. Chạy hệ thống Rule-based (Baseline)
-
-```bash
-# Chạy với webcam
-python main.py
-
-# Chạy với video
-python main.py --source path/to/video.mp4
-
-# Chọn model YOLOv8
-python main.py --model yolov8s.pt
-```
-
-**Phím tắt:**
-- `q`: Thoát
-- `r`: Reset detector
-- `s`: Lưu ảnh
-- `SPACE`: Tạm dừng/Tiếp tục
-
-### 2. Test video với mô hình TCN (Deep Learning)
-
-```bash
-# Test video cơ bản
-.\venv_311\Scripts\python.exe test_video.py --video "path/to/video.mp4"
-
-# Test và lưu video output
-.\venv_311\Scripts\python.exe test_video.py --video "path/to/video.mp4" --output "output.mp4"
-
-# Điều chỉnh threshold (mặc định 0.5)
-.\venv_311\Scripts\python.exe test_video.py --video "path/to/video.mp4" --threshold 0.4
-```
-
-**Output:**
-- Tất cả video output và screenshot được lưu trong thư mục `test_outputs/<video_name>/`
-- Ví dụ: `test_outputs/sample_2/output_20260109_123456.mp4`
-
-### 3. Đánh giá mô hình Rule-based
-
-```bash
-# Đánh giá trên dataset
-python evaluate.py --dataset "C:\Download\Do_an\dataset\video_fall" --limit 50
-```
-
-### 4. Train mô hình mới (LSTM/TCN)
-
-```bash
-# Train cả LSTM và TCN
-python train_skeleton_models.py
-
-# Chỉ train TCN (nếu LSTM đã train xong)
-python train_tcn_only.py
-```
-
-### 5. Xây dựng skeleton dataset
-
-```bash
-# Build dataset từ CSV keypoints
-python build_skeleton_dataset.py --dataset "C:\Download\Do_an\dataset\video_fall" --output "datasets/skeleton_windows"
-
-# Build với giới hạn (để test nhanh)
-python build_skeleton_dataset.py --dataset "path/to/dataset" --limit 100
-```
-
-### 6. Phân tích overfitting
-
-```bash
-# Kiểm tra overfitting và vẽ learning curves
-python check_overfitting.py
-```
-
-## Cấu trúc dự án
+## Cấu Trúc Thư Mục
 
 ```
 fall_detection_system/
-├── main.py                          # Chạy rule-based với webcam/video
-├── config.py                        # Cấu hình hệ thống
-├── test_video.py                    # Test video với TCN model
-├── evaluate.py                      # Đánh giá rule-based
-├── train_skeleton_models.py         # Train LSTM + TCN
-├── train_tcn_only.py                # Train TCN riêng
-├── build_skeleton_dataset.py        # Xây dựng skeleton dataset
-├── check_overfitting.py             # Phân tích overfitting
+├── main.py                       # Hệ thống chính (rule-based + webcam)
+├── test_video.py                 # Test TCN trên video
+├── config.py                     # Cấu hình hệ thống
 │
-├── utils/                           # Các module chính
-│   ├── fall_detector.py             # Rule-based detector (đã cải tiến)
-│   ├── pose_estimator.py            # MediaPipe pose estimation
-│   └── alert_system.py              # Hệ thống cảnh báo
+├── train_tcn_only.py             # Huấn luyện mô hình TCN
+├── train_skeleton_models.py      # Huấn luyện LSTM + TCN
+├── finetune_tcn.py               # Fine-tune TCN
 │
-├── models/
-│   ├── yolov8n.pt                   # YOLO model
-│   └── skeleton/                    # Mô hình deep learning
-│       ├── LSTM_best.pth            # LSTM model tốt nhất
-│       ├── TCN_best.pth             # TCN model tốt nhất
-│       ├── training_results.json    # Kết quả train LSTM
-│       ├── tcn_results.json         # Kết quả train TCN
-│       └── learning_curves.png      # Biểu đồ learning curves
+├── build_skeleton_dataset.py     # Xây dựng dataset từ CSV keypoints
+├── build_dataset_yolo.py         # Xây dựng dataset từ YOLOv8-pose
 │
-├── datasets/
-│   └── skeleton_windows/            # Dataset đã xử lý
-│       ├── X_train.npy              # (29908, 30, 51)
-│       ├── y_train.npy              # (29908,)
-│       ├── X_val.npy                # (6409, 30, 51)
-│       ├── y_val.npy                # (6409,)
-│       ├── X_test.npy               # (6410, 30, 51)
-│       └── y_test.npy               # (6410,)
+├── evaluate_pose_tcn.py          # Đánh giá TCN + YOLOv8-pose
+├── evaluate_tcn_yolo.py          # Đánh giá TCN batch
+├── eval_thresholds.py            # Tunning ngưỡng phát hiện
+├── eval_subject4.py              # So sánh pre vs fine-tuned
 │
-├── test_outputs/                    # Output từ test video
-│   └── sample_2/
-│       ├── output_20260109_123456.mp4
-│       └── screenshot_20260109_123500.jpg
+├── analyze_video_detailed.py     # Phân tích chi tiết từng frame
+├── analyze_skeleton_comparison.py# So sánh skeleton
+├── check_overfitting.py          # Kiểm tra overfitting
 │
-├── logs/                            # Log files
-├── alerts/                          # Ảnh cảnh báo
+├── utils/
+│   ├── pose_estimator.py         # Pose estimation (MediaPipe)
+│   ├── fall_detector.py          # Phát hiện ngã rule-based
+│   └── alert_system.py           # Hệ thống cảnh báo
 │
-├── README.md                        # File này
-├── DATASET_BUILD_REPORT.md          # Báo cáo xây dựng dataset
-├── TRAINING_REPORT.md               # Báo cáo training chi tiết
-└── requirements.txt                 # Dependencies
+├── models/skeleton/              # Mô hình đã huấn luyện
+│   ├── TCN_best.pth              # TCN tốt nhất
+│   ├── LSTM_best.pth             # LSTM tốt nhất
+│   └── TCN_finetuned.pth         # TCN fine-tuned
+│
+└── datasets/skeleton_windows/    # Dataset dạng numpy
+    ├── X_train.npy, y_train.npy
+    ├── X_val.npy, y_val.npy
+    └── X_test.npy, y_test.npy
 ```
 
-## Cải tiến Rule-based (Bước 1)
+## Sử Dụng
 
-Đã cải tiến `utils/fall_detector.py` với 4 cải tiến chính:
+### Chạy thử trên video
 
-### 1. Normalize velocity
-Chia vận tốc cho chiều cao bounding box để không phụ thuộc khoảng cách camera:
-```python
-vy_norm = vy / bbox_height
+```bash
+python test_video.py --video path/to/video.mp4
 ```
 
-### 2. Temporal voting
-Xét 15 frame gần nhất, cần ít nhất 10 frame nghi ngờ mới báo ngã:
-```python
-'temporal_window_size': 15,
-'temporal_vote_threshold': 10,
+### Huấn luyện TCN từ đầu
+
+```bash
+python train_tcn_only.py
 ```
 
-### 3. Post-fall confirmation
-Kiểm tra người có vẫn nằm sau khi ngã (1 giây):
-```python
-'post_fall_time': 1.0,
+### Fine-tune TCN với dữ liệu YOLOv8-pose
+
+```bash
+python finetune_tcn.py
 ```
 
-### 4. Recovery logic
-Tự động reset khi người đứng dậy (30 frames liên tiếp):
-```python
-'recovery_angle': 30,
-'recovery_frames': 30,
+### Đánh giá trên tập video
+
+```bash
+python evaluate_pose_tcn.py --base path/to/video_folder
 ```
 
-## Mô hình Deep Learning (Bước 3)
-
-### LSTM (Long Short-Term Memory)
-- **Kiến trúc**: 2 lớp LSTM (hidden_size=128) + Fully Connected
-- **Input**: (batch_size, 30, 51) - 30 frames, 51 features
-- **Ưu điểm**: Precision cao (92.09%), ít báo nhầm
-- **Nhược điểm**: Recall thấp hơn TCN (86.61%)
+## Mô Hình
 
 ### TCN (Temporal Convolutional Network)
-- **Kiến trúc**: 3 TemporalBlocks với dilated convolutions
-- **Input**: (batch_size, 30, 51)
-- **Ưu điểm**: Recall cao (90.29%), bỏ sót ít hơn
-- **Nhược điểm**: False alarm rate cao hơn LSTM
+- **Input**: 30 frames x 51 features (17 keypoints x 3)
+- **Architecture**: 3 TemporalBlocks (channels [64, 128, 128], kernel_size=3)
+- **Output**: Xác suất ngã (0-1)
 
-### Hyperparameters
-- **Batch size**: 128
-- **Learning rate**: 0.001 (Adam optimizer)
-- **Epochs**: 50 (early stopping patience=10)
-- **Dropout**: 0.3
-- **Class weight**: Fall=1.72, Normal=1.0 (xử lý mất cân bằng)
-- **Loss function**: Weighted Binary Cross Entropy
+### Kết quả đánh giá
 
-## Skeleton Dataset
+| Metric | Value |
+|--------|-------|
+| Accuracy | 93.09% |
+| Precision | 90.72% |
+| Recall | 90.29% |
+| F1-Score | 90.50% |
 
-### Cấu trúc dữ liệu
-- **17 keypoints** (COCO format): Nose, Eyes, Ears, Shoulders, Elbows, Wrists, Hips, Knees, Ankles
-- **Mỗi keypoint**: (X, Y, Confidence)
-- **Window size**: 30 frames
-- **Shape**: (30, 17, 3) → flatten → (30, 51)
+## Các Phase Phát Triển
 
-### Chuẩn hóa skeleton
-1. **Lấy hip center làm gốc**: Trừ tất cả keypoints cho hip center
-2. **Chia cho body size**: Khoảng cách shoulder-hip
-3. **Xử lý missing keypoints**: Confidence < 0.3 → đặt về 0
+1. **Phase 1**: Rule-based (YOLOv8 detect + MediaPipe pose + angle/velocity heuristics)
+2. **Phase 2**: Xây dựng skeleton dataset, sliding windows normalization
+3. **Phase 3**: Deep learning (LSTM → TCN) với TCN đạt kết quả tốt nhất
 
-### Sliding windows
-- **Stride**: 10 frames (overlap)
-- **Công thức**: `num_windows = (N - 30) / 10 + 1`
-- **Ví dụ**: Video 100 frames → 8 windows
+## Keypoints
 
-## Hạn chế và Hướng phát triển
+Sử dụng 17 keypoints theo chuẩn COCO:
 
-### Hạn chế hiện tại
-1. **Data leakage**: Các window từ cùng video có thể xuất hiện ở cả train và test
-2. **Mất cân bằng class**: Fall/No_Fall = 1:1.72
-3. **Overfitting nhẹ**: Loss gap ~0.2, Acc gap ~3%
-4. **Phụ thuộc MediaPipe**: Nếu pose estimation sai → model sai
-
-### Hướng phát triển
-1. **Chia dataset theo video ID**: Tránh data leakage
-2. **Data augmentation**: Thêm noise, rotation, time warping
-3. **Ensemble models**: Kết hợp LSTM + TCN
-4. **Fusion**: Kết hợp skeleton model + YOLO fine-tuned + rule-based
-5. **Model compression**: Giảm kích thước để deploy trên edge device
-6. **Threshold tuning**: Tìm threshold tối ưu cho từng use case
-
-## Tài liệu tham khảo
-
-- [DATASET_BUILD_REPORT.md](DATASET_BUILD_REPORT.md) - Chi tiết xây dựng dataset
-- [TRAINING_REPORT.md](TRAINING_REPORT.md) - Phân tích kết quả training
-- [README_CAI_THIEN_DO_CHINH_XAC.md](README_CAI_THIEN_DO_CHINH_XAC.md) - Hướng dẫn cải thiện độ chính xác
-
-## Tác giả
-
-**Đồ án tốt nghiệp ngành Công nghệ Thông tin**  
-**Đề tài**: AI-Based Human Fall Detection System Using Computer Vision  
-
+```
+0: Nose          1: Left Eye       2: Right Eye
+3: Left Ear      4: Right Ear      5: Left Shoulder
+6: Right Shoulder 7: Left Elbow    8: Right Elbow
+9: Left Wrist   10: Right Wrist   11: Left Hip
+12: Right Hip   13: Left Knee     14: Right Knee
+15: Left Ankle  16: Right Ankle
+```

@@ -13,6 +13,12 @@ build/
 datasets/**/*.npy
 datasets/**/*.pkl
 datasets/**/*.pickle
+*.pt
+*.pth
+*.onnx
+*.h5
+*.keras
+*.joblib
 models/**/*.pth
 models/**/*.pt
 models/**/*.onnx
