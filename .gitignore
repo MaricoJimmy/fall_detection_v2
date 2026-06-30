@@ -38,3 +38,4 @@ test_outputs/
 !models/.gitkeep
 !models/skeleton/.gitkeep
 !logs/.gitkeep
+test_outputs_veloci/
