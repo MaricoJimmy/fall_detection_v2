@@ -437,7 +437,7 @@ class FallDetectionSystemV2:
                                 if self.statuses.get(person_id) != "FALL":
                                     # Luu anh khoanh khac nga
                                     import os, time
-                                    save_dir = "saved_falls"
+                                    save_dir = "alerts"
                                     os.makedirs(save_dir, exist_ok=True)
                                     timestamp = time.strftime("%Y%m%d_%H%M%S")
                                     filename = os.path.join(save_dir, f"fall_detected_p{person_id}_{timestamp}.jpg")
