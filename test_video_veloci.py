@@ -21,7 +21,7 @@ CONFIG = {
     'yolo_model': 'yolov8m-pose.pt',
     'window_size': 30,
     'num_features': 102, # Da tang len 102 (51 spatial + 51 velocity)
-    'threshold': 0.5,
+    'threshold': 0.5,  # TANG NGUONG LEN 0.85 (Cu la 0.5) DE LOAI BO HAN FALSE ALARM LOP SITTING DOWN
     'device': 'cuda' if torch.cuda.is_available() else 'cpu'
 }
 
@@ -85,6 +85,9 @@ class FallDetectionTester:
         # Timer hien thi canh bao FALL (so frame)
         self.fall_alert_timers = {}
         self.fall_alert_duration = 60
+        
+        # BO LOC: Dem so frame lien tiep vuot nguong de chong nhieu
+        self.fall_consecutive_frames = {}
         
         print("\n" + "="*70)
         print("  SAN SANG TEST VIDEO")
@@ -236,6 +239,8 @@ class FallDetectionTester:
                     del self.skeleton_buffers[pid]
                     if pid in self.fall_alert_timers:
                         del self.fall_alert_timers[pid]
+                    if pid in self.fall_consecutive_frames:
+                        del self.fall_consecutive_frames[pid]
             
             for person_id, det_idx in matched.items():
                 bbox = detections[det_idx]
@@ -246,6 +251,7 @@ class FallDetectionTester:
                     self.fall_probabilities[person_id] = 0.0
                     self.statuses[person_id] = "NORMAL"
                     self.fall_alert_timers[person_id] = 0
+                    self.fall_consecutive_frames[person_id] = 0
                 
                 buffer = self.skeleton_buffers[person_id]
                 
@@ -269,10 +275,17 @@ class FallDetectionTester:
                             prob = self.predict(buffer)
                             self.fall_probabilities[person_id] = prob
                             
+                            # BO LOC CHONG NHIEU SITTING DOWN
                             if prob >= CONFIG['threshold']:
+                                self.fall_consecutive_frames[person_id] += 1
+                            else:
+                                self.fall_consecutive_frames[person_id] = 0
+                                
+                            # Chi bao NGA neu vuot nguong lien tuc 5 frames (~0.15s)
+                            if self.fall_consecutive_frames[person_id] >= 5:
                                 self.statuses[person_id] = "FALL"
                                 self.fall_alert_timers[person_id] = self.fall_alert_duration
-                            else:
+                            elif self.fall_alert_timers.get(person_id, 0) == 0:
                                 self.statuses[person_id] = "NORMAL"
         
         self.draw_results(frame)

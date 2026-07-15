@@ -13,7 +13,8 @@ LEFT_SHOULDER = 5; RIGHT_SHOULDER = 6
 LEFT_HIP = 11; RIGHT_HIP = 12
 MIN_CONF = 0.3
 
-DATA_DIR = r'C:\Download\Do_an\data_veloci'
+TRAIN_DIR = r'C:\Download\Do_an\data_veloci'
+EVAL_DIR = r'C:\Download\Do_an\eval'
 OUTPUT_DIR = 'datasets/skeleton_windows_veloci'
 
 def normalize_skeleton(skeleton):
@@ -78,19 +79,22 @@ def extract_windows_from_video(vpath, yolo):
         windows.append(window)
     return windows
 
-def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    print(f"Device: {DEVICE}")
-    yolo = YOLO('yolov8m-pose.pt')
-    yolo.to(DEVICE)
+def process_directory(directory, yolo):
     X_all, y_all = [], []
-    
-    for cls_name in ['Fall', 'No_Fall']:
-        cls_path = os.path.join(DATA_DIR, cls_name)
+    # Kiem tra ca Fall/fall va No_Fall/No_fall (ko phan biet hoa thuong)
+    for cls_name in os.listdir(directory):
+        cls_path = os.path.join(directory, cls_name)
         if not os.path.isdir(cls_path):
-            print(f"Warning: {cls_path} not found.")
             continue
-        label = 1 if cls_name == 'Fall' else 0
+        
+        lower_name = cls_name.lower()
+        if 'no_fall' in lower_name or 'nofall' in lower_name:
+            label = 0
+        elif 'fall' in lower_name:
+            label = 1
+        else:
+            continue
+            
         videos = sorted([f for f in os.listdir(cls_path) if f.lower().endswith(('.mp4', '.avi', '.mov'))])
         for vid in videos:
             vpath = os.path.join(cls_path, vid)
@@ -102,33 +106,40 @@ def main():
                 y_all.extend([label] * len(windows))
                 print(f"{len(windows)} windows")
             else:
-                print("SKIP (no poses or too short)")
+                print("SKIP")
                 
     X = np.array(X_all, dtype=np.float32)
     y = np.array(y_all, dtype=np.float32)
     
-    if len(X) == 0:
-        print("Error: No data extracted.")
-        return
-        
-    print(f"\nExtracted total: {len(X)} windows.")
-    
     indices = np.arange(len(X))
     np.random.seed(42)
     np.random.shuffle(indices)
-    X = X[indices]
-    y = y[indices]
+    return X[indices], y[indices]
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    print(f"Device: {DEVICE}")
+    yolo = YOLO('yolov8m-pose.pt')
+    yolo.to(DEVICE)
     
-    n = len(X)
-    n_train = int(n * 0.70)
-    n_val = int(n * 0.15)
+    print("\n--- PROCESSING TRAIN DATASET ---")
+    X_train, y_train = process_directory(TRAIN_DIR, yolo)
     
-    X_train = X[:n_train]
-    y_train = y[:n_train]
-    X_val = X[n_train:n_train + n_val]
-    y_val = y[n_train:n_train + n_val]
-    X_test = X[n_train + n_val:]
-    y_test = y[n_train + n_val:]
+    print("\n--- PROCESSING EVAL DATASET ---")
+    X_eval, y_eval = process_directory(EVAL_DIR, yolo)
+    
+    if len(X_train) == 0 or len(X_eval) == 0:
+        print("Error: Missing data!")
+        return
+        
+    # Split eval into Val (50%) and Test (50%)
+    n_eval = len(X_eval)
+    n_val = n_eval // 2
+    
+    X_val = X_eval[:n_val]
+    y_val = y_eval[:n_val]
+    X_test = X_eval[n_val:]
+    y_test = y_eval[n_val:]
     
     np.save(os.path.join(OUTPUT_DIR, 'X_train.npy'), X_train)
     np.save(os.path.join(OUTPUT_DIR, 'y_train.npy'), y_train)
