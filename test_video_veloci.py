@@ -283,6 +283,16 @@ class FallDetectionTester:
                                 
                             # Chi bao NGA neu vuot nguong lien tuc 5 frames (~0.15s)
                             if self.fall_consecutive_frames[person_id] >= 5:
+                                if self.statuses.get(person_id) != "FALL":
+                                    import os, time
+                                    save_dir = "saved_falls"
+                                    os.makedirs(save_dir, exist_ok=True)
+                                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                    filename = os.path.join(save_dir, f"fall_detected_p{person_id}_{timestamp}.jpg")
+                                    import cv2
+                                    cv2.imwrite(filename, frame)
+                                    print(f"  [ALERT] Phat hien NGA! Da luu anh: {filename}")
+                                    
                                 self.statuses[person_id] = "FALL"
                                 self.fall_alert_timers[person_id] = self.fall_alert_duration
                             elif self.fall_alert_timers.get(person_id, 0) == 0:

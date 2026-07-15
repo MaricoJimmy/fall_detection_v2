@@ -424,7 +424,26 @@ class FallDetectionSystemV2:
                             prob = self.predict(buffer)
                             self.fall_probabilities[person_id] = prob
 
+                            # BO LOC CHONG NHIEU 5 FRAMES + TU DONG LUU ANH
                             if prob >= CONFIG['threshold']:
+                                if not hasattr(self, 'fall_consecutive_frames'):
+                                    self.fall_consecutive_frames = {}
+                                self.fall_consecutive_frames[person_id] = self.fall_consecutive_frames.get(person_id, 0) + 1
+                            else:
+                                if hasattr(self, 'fall_consecutive_frames'):
+                                    self.fall_consecutive_frames[person_id] = 0
+                                    
+                            if getattr(self, 'fall_consecutive_frames', {}).get(person_id, 0) >= 5:
+                                if self.statuses.get(person_id) != "FALL":
+                                    # Luu anh khoanh khac nga
+                                    import os, time
+                                    save_dir = "saved_falls"
+                                    os.makedirs(save_dir, exist_ok=True)
+                                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                    filename = os.path.join(save_dir, f"fall_detected_p{person_id}_{timestamp}.jpg")
+                                    cv2.imwrite(filename, frame)
+                                    print(f"  [ALERT] Phat hien NGA! Da luu anh: {filename}")
+                                
                                 self.statuses[person_id] = "FALL"
                                 self.fall_alert_timers[person_id] = self.fall_alert_duration
                             elif self.fall_alert_timers.get(person_id, 0) <= 0:
